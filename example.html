@@ -7,24 +7,30 @@
 
 body{
     font-family: Arial;
+    font-size: 1.4rem;
 }
+
+input{ font-size: 1.4rem; }
+
 
 #dot{
     position: absolute;
     left: 50%;
     top: 50%;
-    width: 1rem;
-    height: 1rem;
-    border-radius: 0.5rem;
-    background: blue;
+    width: 4rem;
+    height: 4rem;
+    border-radius: 2rem;
+    background: #6495ED;
 }
 
 </style>
 
     </head>
     <body>
+        <h1>OpenEye browser connect example</h1>
         <!-- input to select the device to connect to --> 
-        <input id="deviceId" type="text" placeholder="OpenEye device id">
+        <input size=15 id="deviceIp" type="text" placeholder="OpenEye ip address">
+        <input size=30 id="deviceId" type="text" placeholder="OpenEye device id">
         <a href="#1" onclick="connect()">connect</a>
         <br>
         <p id="status">Enter your device id to connect to your OpenEye device in the browser</p>
@@ -40,6 +46,8 @@ body{
 
         <!-- connect to an OpenEye device -->
         <script> 
+            var openeye = {}; 
+
             // simple function to show the connection status to the user
             function setStatus(msg){
                 document.getElementById("status").innerHTML = msg;
@@ -47,9 +55,25 @@ body{
 
             function connect(){
                 // read the device id
+                var ipAddress = document.getElementById("deviceIp").value;
                 var deviceId = document.getElementById("deviceId").value;
-                setStatus("connecting to device: "+deviceId+"...");
-                
+
+                // init OpenEye
+                openeye = new OpenEye(ipAddress, deviceId);
+                // set status callback
+                openeye.statusCallback = function setStatus(msg){
+                    document.getElementById("status").innerHTML = msg;
+                }
+                // set callback for when the eye moves
+                openeye.positionCallback = function setStatus(x, y){
+                    console.log(x, y);
+                    var dot = document.getElementById("dot");
+                    dot.style.left = (50-x*80)+"%";
+                    dot.style.top = (50+y*80)+"%";
+                    dot.innerHTML = x+"<br>"+y;
+                }
+                // connect to device
+                openeye.connect();
             }
             
 
