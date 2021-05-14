@@ -7,26 +7,81 @@
 
 body{
     font-family: Arial;
-    font-size: 1.4rem;
+    font-size: 1.2rem;
 }
 
-input{ font-size: 1.4rem; }
+input{ font-size: 1.2rem; }
+
+.marker{
+  position: fixed;
+  width: 140px;
+  height: 140px;
+  background-color: rgb(0,0,255);
+  border-radius: 70px;
+}
+.marker_inside{
+  position: relative;
+  left: 50px;
+  top: 50px;
+  width: 40px;
+  height: 40px;
+  background-color: rgb(255,0,0);
+  border-radius: 20px;
+}
+
+#cursor{
+    position: absolute;
+    width: 3rem;
+    height: 3rem;
+    border-radius: 1.5rem;
+    background: #ff528c;
+}
+
+#rand{
+    position: absolute;
+    width: 3rem;
+    height: 3rem;
+    border-radius: 1.5rem;
+    background: #000;
+}
 
 
 #dot{
     position: absolute;
-    left: 50%;
+    left: calc(50% - 2rem);
     top: 50%;
     width: 4rem;
     height: 4rem;
     border-radius: 2rem;
-    background: #6495ED;
+    background: #ff528c;
+}
+
+#m1{
+    position: absolute;
+    left: calc(50% - 10rem);
+    top: 40%;
+    width: 4rem;
+    height: 4rem;
+    border-radius: 2rem;
+    background: #b9d3eb;
+}
+#m2{
+    position: absolute;
+    left: calc(50% + 6rem);
+    top: 40%;
+    width: 4rem;
+    height: 4rem;
+    border-radius: 2rem;
+    background: #b9d3eb;
 }
 
 </style>
 
     </head>
     <body>
+      <br><br>
+      <br><br>
+      <br><br>
         <h1>OpenEye browser connect example</h1>
         <!-- input to select the device to connect to --> 
         <input size=15 id="deviceIp" type="text" placeholder="OpenEye ip address">
@@ -34,19 +89,65 @@ input{ font-size: 1.4rem; }
         <a href="#1" onclick="connect()">connect</a>
         <br>
         <p id="status">Enter your device id to connect to your OpenEye device in the browser</p>
+        <p id="markers"></p>
 
         <!-- this is the dot that will be moved by moving your eyes -->
+        <div id="cursor"></div>
+        <div id="rand"></div>
         <div id="dot"></div>
+        <div id="m1"></div>
+        <div id="m2"></div>
+
+        <!-- markers are at 600x 70y, 1000x 70y, width between is 400-->
+        <div class="marker" style="left:calc(600px - 70px);top:0px;">
+          <div class="marker_inside"></div>
+        </div>
+        <div class="marker" style="left:calc(1000px - 70px);top:0px;">
+          <div class="marker_inside"></div>
+        </div>
 
 
         <!-- import MQTT library for the socket connection to OpenEye -->
         <script src="src/paho-mqtt.js"></script>
         <!-- import OpenEye javascript client -->
         <script src="src/openeye.js"></script>
+        <script>
+          function gup( name, url ) {
+            if (!url) url = location.href;
+            name = name.replace(/[\[]/,"\\\[").replace(/[\]]/,"\\\]");
+            var regexS = "[\\?&]"+name+"=([^&#]*)";
+            var regex = new RegExp( regexS );
+            var results = regex.exec( url );
+            return results == null ? null : results[1];
+          }
+        </script>
 
         <!-- connect to an OpenEye device -->
         <script> 
             var openeye = {}; 
+
+            window.onload = init;
+            function init() {
+              if (window.Event) {
+                document.captureEvents(Event.MOUSEMOVE);
+              }
+              document.onmousemove = getCursorXY;
+              setInterval(function(){
+                var rn = document.getElementById("rand");
+                rn.style.left = parseInt(Math.random()*1600);
+                rn.style.top = parseInt(Math.random()*800);
+              }, 1000);
+            }
+
+            function getCursorXY(e) {
+              var cursor = document.getElementById("cursor");
+              cursor.style.left = (window.Event) ? e.pageX : event.clientX + (document.documentElement.scrollLeft ? document.documentElement.scrollLeft : document.body.scrollLeft);
+              cursor.style.top = (window.Event) ? e.pageY : event.clientY + (document.documentElement.scrollTop ? document.documentElement.scrollTop : document.body.scrollTop);
+            } 
+
+            // get ip address and device id from the url to save time during development typing them in
+            document.getElementById("deviceIp").value = gup("ip");
+            document.getElementById("deviceId").value = gup("deviceId");
 
             // simple function to show the connection status to the user
             function setStatus(msg){
@@ -61,16 +162,68 @@ input{ font-size: 1.4rem; }
                 // init OpenEye
                 openeye = new OpenEye(ipAddress, deviceId);
                 // set status callback
-                openeye.statusCallback = function setStatus(msg){
+                openeye.statusCallback = function(msg){
                     document.getElementById("status").innerHTML = msg;
                 }
                 // set callback for when the eye moves
-                openeye.positionCallback = function setStatus(x, y){
-                    console.log(x, y);
+                openeye.positionCallback = function(x, y){
+                    //console.log(x, y);
+
+                    // map to the same pixel space as the scene cam (1280x720 starting from center)
+                    x = parseInt((-x * 640)+640);
+                    y = parseInt((y * 360)+360);
+                    x *= openeye.calibration.a;
+                    y *= openeye.calibration.a;
+                    x += openeye.calibration.bx;
+                    y += openeye.calibration.by;
+                    // adjust for rotation from as if the left marker is at 0,0
+                    var rot = openeye.rotate(600, 70, x, y, openeye.calibration.r);
+                    x = rot[0];
+                    y = rot[1];
                     var dot = document.getElementById("dot");
-                    dot.style.left = (50-x*80)+"%";
-                    dot.style.top = (50+y*80)+"%";
+                    dot.style.left = x + "px";
+                    dot.style.top = y + "px";
                     dot.innerHTML = x+"<br>"+y;
+                }
+                openeye.markersCallback = function(left, right){
+
+                    var markers = document.getElementById("markers");
+                    markers.innerHTML = "left: "+left.found+" "+left.x+", "+left.y+
+                              " right: "+right.found+" "+right.x+", "+right.y;
+
+                    if(left.found && right.found){
+                        // calculate rotation
+                        openeye.calibration.r = Math.atan2(right.y-left.y, right.x-left.x);
+                        // calculate the zoom level
+                        openeye.calibration.a = 400 / (right.x-left.x); // TODO add rotation into this
+                        left.x *= openeye.calibration.a;
+                        left.y *= openeye.calibration.a;
+                        right.x *= openeye.calibration.a;
+                        right.y *= openeye.calibration.a;
+                        // calculate offset
+                        openeye.calibration.bx = 600 - left.x;
+                        openeye.calibration.by = 70 - left.y;
+                        left.x += openeye.calibration.bx;
+                        right.x += openeye.calibration.bx;
+                        left.y += openeye.calibration.by;
+                        right.y += openeye.calibration.by;
+                        // adjust for rotation from as if the left marker is at 0,0
+                        var rot = openeye.rotate(600, 70, right.x, right.y, openeye.calibration.r);
+                        right.x = rot[0];
+                        right.y = rot[1];
+                    }
+
+                    var m1 = document.getElementById("m1");
+                    m1.style.left = left.x + "px";
+                    m1.style.top = left.y + "px";
+                    m1.innerHTML = left.x+"<br>"+left.y;
+
+                    var m2 = document.getElementById("m2");
+                    m2.style.left = right.x + "px";
+                    m2.style.top = right.y + "px";
+                    m2.innerHTML = right.x+"<br>"+right.y;
+
+                    
                 }
                 // connect to device
                 openeye.connect();

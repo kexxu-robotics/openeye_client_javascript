@@ -7,7 +7,25 @@ function OpenEye(deviceIpAddress, deviceId){
     this.client = {}; // mqtt socket client
     this.status = "not connected";
     this.statusCallback = function(){}; // overwrite this to get status updates
-    this.positionCallback = function(x,y){console.log(x,y);}; // overwrite this to get position updates
+    this.positionCallback = function(x,y){console.log("position", x, y);}; // overwrite this to get position updates
+    this.markersCallback = function(left, right){console.log("markers", left, right);}; // overwrite this to get position updates
+
+    this.calibration = {
+        bx: 0, // add
+        by: 0,
+        r: 0.0, // rotate
+        ax: 0.0, // mulitiply
+        ay: 0.0
+    }
+}
+
+OpenEye.prototype.rotate = function(cx, cy, x, y, radians) {
+    //var radians = (Math.PI / 180) * angle,
+    cos = Math.cos(radians),
+    sin = Math.sin(radians),
+    nx = (cos * (x - cx)) + (sin * (y - cy)) + cx,
+    ny = (cos * (y - cy)) - (sin * (x - cx)) + cy;
+    return [nx, ny];
 }
 
 OpenEye.prototype.setStatus = function(status){
@@ -36,10 +54,9 @@ OpenEye.prototype.connect = function(){
 OpenEye.prototype.onConnect = function() {
     var self = this;
     // Once a connection has been made, make a subscription and send a message.
-    console.log("onConnect");
+    console.log("onConnect ", self.deviceId);
     self.setStatus("connected")
     self.client.subscribe("devices/"+self.deviceId+"/#");
-
 }
 
 OpenEye.prototype.sendMessage = function(topic, msg){
@@ -64,15 +81,21 @@ OpenEye.prototype.onMessageArrived = function(msg) {
     if(self.debug){
         console.log(msg.topic, msg.payloadString);
     }
-    var x = 0.0;
-    var y = 0.0;
     if(msg.topic.endsWith("/eyetracking")){
+        var x = 0.0;
+        var y = 0.0;
         var js = JSON.parse(msg.payloadString);
         for(var i = 0; i < js.length; i++){
             if(js[i]["Feature"] === "pupil_rel_pos_x"){ x = js[i]["Value"]; }
             if(js[i]["Feature"] === "pupil_rel_pos_y"){ y = js[i]["Value"]; }
         }
         self.positionCallback(x,y);
+    }
+    if(msg.topic.endsWith("/markers")){
+        var js = JSON.parse(msg.payloadString);
+        var left = {found: js["left_found"], x: js["left_x"], y: js["left_y"]};
+        var right = {found: js["right_found"], x: js["right_x"], y: js["right_y"]};
+        self.markersCallback(left, right);
     }
 }
 
