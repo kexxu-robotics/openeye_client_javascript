@@ -10,6 +10,7 @@ function OpenEye(deviceIpAddress, deviceId){
     this.positionCallback = function(x,y){console.log("position", x, y);}; // overwrite this to get position updates
     this.markersCallback = function(left, right){console.log("markers", left, right);}; // overwrite this to get position updates
 
+    // calibration from the glasses to the screen
     this.calibration = {
         bx: 0, // add
         by: 0,
@@ -17,6 +18,94 @@ function OpenEye(deviceIpAddress, deviceId){
         ax: 0.0, // mulitiply
         ay: 0.0
     }
+
+    this.lastX = 0.0;
+    this.lastY = 0.0;
+    this.lastXcal = 0.0;
+    this.lastYcal = 0.0;
+    this.calPoints = [];
+
+    // least squares fit calibration using calibration points
+    this.calibration2 = {
+        ax: 1,
+        ay: 1,
+        bx: 0,
+        by: 0,
+    }
+}
+
+OpenEye.prototype.fitCalPoints = function(){
+    var values_x1 = [];
+    var values_x2 = [];
+    var values_y1 = [];
+    var values_y2 = [];
+    for(var i = 0; i < this.calPoints.length; i++){
+        var p = this.calPoints[i];
+        values_x1.push(p.x2);
+        values_x2.push(p.x1);
+        values_y1.push(p.y2);
+        values_y2.push(p.y1);
+    }
+    // fit x
+    var calx = this.leastSquares(values_x1, values_x2);
+    console.log("Least squares calibration x:", calx);
+    this.calibration2.ax = calx.m;
+    this.calibration2.bx = calx.b;
+    // fit y
+    var caly = this.leastSquares(values_y1, values_y2);
+    console.log("Least squares calibration y:", caly);
+    this.calibration2.ay = caly.m;
+    this.calibration2.by = caly.b;
+    // clean
+    this.calPoints = [];
+}
+
+OpenEye.prototype.leastSquares = function(values_x, values_y){
+    var x_sum = 0;
+    var y_sum = 0;
+    var xy_sum = 0;
+    var xx_sum = 0;
+    var count = 0;
+
+    /*
+     * The above is just for quick access, makes the program faster
+     */
+    var x = 0;
+    var y = 0;
+    var values_length = values_x.length;
+
+    if (values_length != values_y.length) {
+        throw new Error('Least squares: The parameters values_x and values_y need to have same size!');
+    }
+
+    /*
+     * Above and below cover edge cases
+     */
+    if (values_length === 0) {
+        throw new Error('Least squares: No values provided!');
+    }
+
+    /*
+     * Calculate the sum for each of the parts necessary.
+     */
+    for (let i = 0; i< values_length; i++) {
+        x = values_x[i];
+        y = values_y[i];
+        x_sum+= x;
+        y_sum+= y;
+        xx_sum += x*x;
+        xy_sum += x*y;
+        count++;
+    }
+
+    /*
+     * Calculate m and b for the line equation:
+     * y = x * m + b
+     */
+    var m = (count*xy_sum - x_sum*y_sum) / (count*xx_sum - x_sum*x_sum);
+    var b = (y_sum/count) - (m*x_sum)/count;
+    
+    return {m: m, b: b}
 }
 
 OpenEye.prototype.rotate = function(cx, cy, x, y, radians) {
@@ -82,13 +171,9 @@ OpenEye.prototype.onMessageArrived = function(msg) {
         console.log(msg.topic, msg.payloadString);
     }
     if(msg.topic.endsWith("/eyetracking")){
-        var x = 0.0;
-        var y = 0.0;
         var js = JSON.parse(msg.payloadString);
-        for(var i = 0; i < js.length; i++){
-            if(js[i]["Feature"] === "pupil_rel_pos_x"){ x = js[i]["Value"]; }
-            if(js[i]["Feature"] === "pupil_rel_pos_y"){ y = js[i]["Value"]; }
-        }
+        var x = js["pupil_rel_pos_x"];
+        var y = js["pupil_rel_pos_y"];
         self.positionCallback(x,y);
     }
     if(msg.topic.endsWith("/markers")){
