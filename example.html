@@ -12,6 +12,8 @@ body{
 
 input{ font-size: 1.2rem; }
 
+.hidden{ display: none; }
+
 .marker{
   position: fixed;
   width: 140px;
@@ -92,6 +94,7 @@ input{ font-size: 1.2rem; }
 }
 
 .cal1{
+    opacity: 0.1;
     position: absolute;
     width: 4px;
     height: 4px;
@@ -211,8 +214,14 @@ input{ font-size: 1.2rem; }
             function startStopCalibrate() {
               if(!openeye.isCalibrating){
                 openeye.isCalibrating=true;
+                document.getElementById("dot").classList.add("hidden");
+                document.getElementById("dotx").classList.add("hidden");
+                document.getElementById("doty").classList.add("hidden");
               }else{
                 openeye.isCalibrating=false;
+                document.getElementById("dot").classList.remove("hidden");
+                document.getElementById("dotx").classList.remove("hidden");
+                document.getElementById("doty").classList.remove("hidden");
                 openeye.fitCalPoints();
               }
             }
